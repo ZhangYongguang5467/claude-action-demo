@@ -8,21 +8,78 @@ on:
 
 jobs:
   claude:
+    if: contains(github.event.comment.body || github.event.issue.body, '@claude')
     runs-on: ubuntu-latest
     permissions:
       contents: write
       pull-requests: write
       issues: write
-      id-token: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Run Claude Code
-        uses: anthropics/claude-code-action@v1
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          trigger_phrase: "@claude"
+          node-version: '20'
+
+      - name: Install Claude Code CLI
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Get request content
+        id: request
+        run: |
+          if [ "${{ github.event_name }}" == "issues" ]; then
+            CONTENT="${{ github.event.issue.body }}"
+          else
+            CONTENT="${{ github.event.comment.body }}"
+          fi
+          echo "content<<EOF" >> $GITHUB_OUTPUT
+          echo "$CONTENT" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Run Claude Code
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ANTHROPIC_BASE_URL: ${{ secrets.ANTHROPIC_BASE_URL }}
+        run: |
+          claude --print --dangerously-skip-permissions "${{ steps.request.outputs.content }}"
+
+      - name: Check for changes
+        id: changes
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create Pull Request
+        if: steps.changes.outputs.has_changes == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BRANCH_NAME="claude/issue-${{ github.event.issue.number }}-$(date +%s)"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH_NAME"
+          git add .
+          git commit -m "feat: changes by Claude for issue #${{ github.event.issue.number }}"
+          git push origin "$BRANCH_NAME"
+          gh pr create \
+            --title "Claude: Changes for issue #${{ github.event.issue.number }}" \
+            --body "This PR was automatically created by Claude in response to issue #${{ github.event.issue.number }}" \
+            --base main \
+            --head "$BRANCH_NAME"
+
+      - name: Comment on issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ "${{ steps.changes.outputs.has_changes }}" == "true" ]; then
+            gh issue comment ${{ github.event.issue.number }} --body "✅ Claude has created a PR with the requested changes."
+          else
+            gh issue comment ${{ github.event.issue.number }} --body "ℹ️ Claude analyzed the request but no code changes were made."
+          fi
