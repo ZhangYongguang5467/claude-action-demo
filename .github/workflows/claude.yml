@@ -44,8 +44,9 @@ jobs:
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           ANTHROPIC_BASE_URL: ${{ secrets.ANTHROPIC_BASE_URL }}
+          ANTHROPIC_MODEL: claude-sonnet-4-6
         run: |
-          claude --print --dangerously-skip-permissions "${{ steps.request.outputs.content }}"
+          claude --print --dangerously-skip-permissions --model claude-sonnet-4-6 "${{ steps.request.outputs.content }}"
 
       - name: Check for changes
         id: changes
