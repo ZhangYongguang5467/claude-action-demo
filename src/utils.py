@@ -14,3 +14,10 @@ def subtract(a: int, b: int) -> int:
 def multiply(a: int, b: int) -> int:
     """两数相乘"""
     return a * b
+
+
+def divide(a: float, b: float) -> float:
+    """两数相除"""
+    if b == 0:
+        raise ValueError("除数不能为零")
+    return a / b
